@@ -1,82 +1,89 @@
 /**
- * Script de conversión para Infor Sales Hub - Quick Entry
- * Con Logs detallados de depuración y manejo de estructuras M3
+ * Script de conversión oficial para Infor Sales Hub - Quick Entry
+ * Traducción de Alias (EA13) a Número de Artículo M3 (ITNO)
  */
-(function () {
-    return {
-        execute: function (input) {
-            return new Promise(function (resolve, reject) {
-                console.log("[SalesHub Script] --- Inicio de Ejecución ---");
-                console.log("[SalesHub Script] Valor de entrada (input):", input);
 
-                var barcode = input ? input.trim() : "";
-                var prefix = "7"; 
+// Definición directa del objeto de conversión compatible con el cargador de Sales Hub
+var QuickEntryConversionScript = {
+    /**
+     * Punto de entrada obligatorio para la conversión
+     * @param {string} input - Código escaneado
+     * @returns {Promise}
+     */
+    execute: function (input) {
+        return new Promise(function (resolve, reject) {
+            console.log("--> [SalesHub_Debug] Iniciando execute con input:", input);
+            
+            var barcode = input ? input.trim() : "";
+            var prefix = "7";
 
-                // Validación y remoción manual del prefijo si Sales Hub no lo limpió nativamente
-                if (barcode.indexOf(prefix) === 0) {
-                    console.log("[SalesHub Script] Prefijo '" + prefix + "' detectado al inicio. Removiendo...");
-                    barcode = barcode.substring(prefix.length);
-                }
+            // Limpieza manual del prefijo asignado
+            if (barcode.indexOf(prefix) === 0) {
+                barcode = barcode.substring(prefix.length);
+                console.log("--> [SalesHub_Debug] Prefijo removido. Código resultante:", barcode);
+            }
 
-                console.log("[SalesHub Script] Código de barras a consultar en M3:", barcode);
+            // Validar que tengamos un código numérico para consultar
+            if (barcode.length > 0 && !isNaN(barcode)) {
+                var request = {
+                    program: "MMS200MI",
+                    transaction: "GetItmByAlias",
+                    record: {
+                        ALAN: barcode,
+                        ALTY: "EA13" // Configurado según tu pantalla MMS025
+                    }
+                };
 
-                if (barcode.length > 0 && !isNaN(barcode)) {
-                    var request = {
-                        program: "MMS200MI",
-                        transaction: "GetItmByAlias", 
-                        record: { 
-                            ALAN: barcode, 
-                            ALTY: "EA13"   
+                console.log("--> [SalesHub_Debug] Ejecutando consulta MI en M3...");
+
+                SalesHubRestService.executeMI(request)
+                    .then(function (response) {
+                        console.log("--> [SalesHub_Debug] Respuesta de M3 recibida:", JSON.stringify(response));
+                        
+                        // Validar las estructuras habituales de respuesta en Sales Hub (items, records o directo)
+                        var data = response;
+                        if (response && response.records && response.records.length > 0) {
+                            data = response.records[0];
+                        } else if (response && response.items && response.items.length > 0) {
+                            data = response.items[0];
+                        } else if (response && response.item) {
+                            data = response.item;
+                        } else if (response && response.record) {
+                            data = response.record;
                         }
-                    };
 
-                    console.log("[SalesHub Script] Enviando Request a executeMI:", JSON.stringify(request));
-
-                    SalesHubRestService.executeMI(request)
-                        .then(function (response) {
-                            console.log("[SalesHub Script] Respuesta completa recibida de M3:", JSON.stringify(response));
-                            
-                            // Intentar ubicar el registro en las diferentes estructuras posibles de Infor MI
-                            var record = null;
-                            
-                            if (response) {
-                                if (response.record) record = response.record;
-                                else if (response.item) record = response.item;
-                                else if (response.items && response.items.length > 0) record = response.items[0];
-                                else if (response.records && response.records.length > 0) record = response.records[0];
-                            }
-
-                            if (record && record.ITNO) {
-                                var itemResolved = record.ITNO.trim();
-                                console.log("[SalesHub Script] ¡Éxito! Artículo traducido encontrado:", itemResolved);
-                                
-                                resolve({
-                                    itemNumber: itemResolved,
-                                    quantity: 1
-                                });
-                            } else {
-                                console.warn("[SalesHub Script] La API respondió pero no se encontró la propiedad ITNO en la estructura.");
-                                resolve({
-                                    itemNumber: input,
-                                    quantity: 1
-                                });
-                            }
-                        })
-                        .catch(function (error) {
-                            console.error("[SalesHub Script] Error crítico en la llamada a SalesHubRestService.executeMI:", error);
+                        if (data && data.ITNO) {
+                            var targetItem = data.ITNO.trim();
+                            console.log("--> [SalesHub_Debug] Artículo resuelto con éxito:", targetItem);
+                            resolve({
+                                itemNumber: targetItem,
+                                quantity: 1
+                            });
+                        } else {
+                            console.warn("--> [SalesHub_Debug] No se encontró ITNO en la respuesta de M3. Usando input original.");
                             resolve({
                                 itemNumber: input,
                                 quantity: 1
                             });
+                        }
+                    })
+                    .catch(function (error) {
+                        console.error("--> [SalesHub_Debug] Error en executeMI:", error);
+                        resolve({
+                            itemNumber: input,
+                            quantity: 1
                         });
-                } else {
-                    console.log("[SalesHub Script] El formato del código no es válido para conversión de alias. Se envía original.");
-                    resolve({
-                        itemNumber: input,
-                        quantity: 1
                     });
-                }
-            });
-        }
-    };
-})();
+            } else {
+                console.log("--> [SalesHub_Debug] Código no cumple condiciones. Procesando de forma nativa.");
+                resolve({
+                    itemNumber: input,
+                    quantity: 1
+                });
+            }
+        });
+    }
+};
+
+// Retornar explícitamente el objeto si el cargador usa evaluación de contexto
+QuickEntryConversionScript;
