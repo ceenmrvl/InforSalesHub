@@ -1,56 +1,61 @@
 /**
  * Script de conversión para Infor Sales Hub - Quick Entry
- * Traduce códigos EAN13 con prefijo a su número de artículo único (ITNO)
+ * Con Logs detallados de depuración y manejo de estructuras M3
  */
 (function () {
     return {
-        /**
-         * Función principal disparada por el punto de salida
-         * @param {string} input - El código escaneado o ingresado (Ej: 7779123456789 o 779123456789)
-         * @returns {Promise} Retorna objeto { itemNumber: string, quantity: number }
-         */
         execute: function (input) {
             return new Promise(function (resolve, reject) {
-                // 1. Limpiar espacios en blanco
+                console.log("[SalesHub Script] --- Inicio de Ejecución ---");
+                console.log("[SalesHub Script] Valor de entrada (input):", input);
+
                 var barcode = input ? input.trim() : "";
-                
-                // Configuración del prefijo asignado en Sales Hub UI
                 var prefix = "7"; 
 
-                // 2. Validar y procesar el prefijo
-                // Si el código escaneado empieza con el prefijo '7', se lo removemos para buscar el EAN real en M3
+                // Validación y remoción manual del prefijo si Sales Hub no lo limpió nativamente
                 if (barcode.indexOf(prefix) === 0) {
+                    console.log("[SalesHub Script] Prefijo '" + prefix + "' detectado al inicio. Removiendo...");
                     barcode = barcode.substring(prefix.length);
                 }
 
-                // 3. Regla de validación del código de barras resultante (numérico)
+                console.log("[SalesHub Script] Código de barras a consultar en M3:", barcode);
+
                 if (barcode.length > 0 && !isNaN(barcode)) {
-                    
-                    // Ajuste técnico definitivo basado en tu pantalla MMS025
-					var request = {
-						program: "MMS200MI",
-						transaction: "GetItmByAlias", 
-						record: { 
-							ALAN: barcode, // Tu código EAN (Ej: 7501476669010)
-							ALTY: "EA13"   // Tipo de alias correcto según tu configuración de M3
-						}
-					};
+                    var request = {
+                        program: "MMS200MI",
+                        transaction: "GetItmByAlias", 
+                        record: { 
+                            ALAN: barcode, 
+                            ALTY: "EA13"   
+                        }
+                    };
 
+                    console.log("[SalesHub Script] Enviando Request a executeMI:", JSON.stringify(request));
 
-                    // Ejecución del servicio MI a través de Sales Hub
                     SalesHubRestService.executeMI(request)
                         .then(function (response) {
-                            // M3 usualmente devuelve la estructura en response.record o response.item según el wrapper de Sales Hub
-                            var record = response.record || response.item;
+                            console.log("[SalesHub Script] Respuesta completa recibida de M3:", JSON.stringify(response));
                             
+                            // Intentar ubicar el registro en las diferentes estructuras posibles de Infor MI
+                            var record = null;
+                            
+                            if (response) {
+                                if (response.record) record = response.record;
+                                else if (response.item) record = response.item;
+                                else if (response.items && response.items.length > 0) record = response.items[0];
+                                else if (response.records && response.records.length > 0) record = response.records[0];
+                            }
+
                             if (record && record.ITNO) {
-                                // Devolvemos el número de artículo real de M3
+                                var itemResolved = record.ITNO.trim();
+                                console.log("[SalesHub Script] ¡Éxito! Artículo traducido encontrado:", itemResolved);
+                                
                                 resolve({
-                                    itemNumber: record.ITNO.trim(),
+                                    itemNumber: itemResolved,
                                     quantity: 1
                                 });
                             } else {
-                                // Si la API responde pero no encuentra el alias, procesa con el input original
+                                console.warn("[SalesHub Script] La API respondió pero no se encontró la propiedad ITNO en la estructura.");
                                 resolve({
                                     itemNumber: input,
                                     quantity: 1
@@ -58,15 +63,14 @@
                             }
                         })
                         .catch(function (error) {
-                            console.error("Error al consultar el Alias en M3:", error);
-                            // En caso de caída de red o error de API, no bloquea al vendedor
+                            console.error("[SalesHub Script] Error crítico en la llamada a SalesHubRestService.executeMI:", error);
                             resolve({
                                 itemNumber: input,
                                 quantity: 1
                             });
                         });
                 } else {
-                    // Si no cumple el formato esperado, se envía el input original sin alterar
+                    console.log("[SalesHub Script] El formato del código no es válido para conversión de alias. Se envía original.");
                     resolve({
                         itemNumber: input,
                         quantity: 1
