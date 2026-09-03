@@ -1,61 +1,74 @@
 /**
  * Script de conversión para Infor Sales Hub - Quick Entry
- * Traduce códigos EAN13 a su número de artículo único (ITNO)
+ * Traduce códigos EAN13 con prefijo a su número de artículo único (ITNO)
  */
 (function () {
     return {
         /**
          * Función principal disparada por el punto de salida
-         * @param {string} input - El código escaneado o ingresado (EAN13)
-         * @returns {Promise} Debe retornar un objeto { itemNumber: string, quantity: number }
+         * @param {string} input - El código escaneado o ingresado (Ej: 7779123456789 o 779123456789)
+         * @returns {Promise} Retorna objeto { itemNumber: string, quantity: number }
          */
         execute: function (input) {
             return new Promise(function (resolve, reject) {
-                // Limpiar espacios en blanco
+                // 1. Limpiar espacios en blanco
                 var barcode = input ? input.trim() : "";
+                
+                // Configuración del prefijo asignado en Sales Hub UI
+                var prefix = "7"; 
 
-                // Regla: Si es un código EAN13 (usualmente 13 dígitos numéricos)
-                if (barcode.length === 13 && !isNaN(barcode)) {
+                // 2. Validar y procesar el prefijo
+                // Si el código escaneado empieza con el prefijo '7', se lo removemos para buscar el EAN real en M3
+                if (barcode.indexOf(prefix) === 0) {
+                    barcode = barcode.substring(prefix.length);
+                }
+
+                // 3. Regla de validación del código de barras resultante (numérico)
+                if (barcode.length > 0 && !isNaN(barcode)) {
                     
-                    // Llamamos a la transacción GetItmBasic de MMS200MI para resolver el código de barras
-                    // O bien, consumimos el servicio de consulta de alias de M3 (MITPOP)
-                    var request = {
-                        program: "MMS200MI",
-                        transaction: "GetItmBasic",
-                        record: { 
-                            ALAN: barcode // Consulta de alias / código EAN
-                        }
-                    };
+                    // Ajuste técnico definitivo basado en tu pantalla MMS025
+					var request = {
+						program: "MMS200MI",
+						transaction: "GetItmByAlias", 
+						record: { 
+							ALAN: barcode, // Tu código EAN (Ej: 7501476669010)
+							ALTY: "EA13"   // Tipo de alias correcto según tu configuración de M3
+						}
+					};
+
 
                     // Ejecución del servicio MI a través de Sales Hub
                     SalesHubRestService.executeMI(request)
                         .then(function (response) {
-                            if (response && response.item && response.item.ITNO) {
-                                // Devolvemos el número de artículo real y la cantidad por defecto (1)
+                            // M3 usualmente devuelve la estructura en response.record o response.item según el wrapper de Sales Hub
+                            var record = response.record || response.item;
+                            
+                            if (record && record.ITNO) {
+                                // Devolvemos el número de artículo real de M3
                                 resolve({
-                                    itemNumber: response.item.ITNO,
+                                    itemNumber: record.ITNO.trim(),
                                     quantity: 1
                                 });
                             } else {
-                                // Si no se encuentra traducción, devolvemos la entrada original
+                                // Si la API responde pero no encuentra el alias, procesa con el input original
                                 resolve({
-                                    itemNumber: barcode,
+                                    itemNumber: input,
                                     quantity: 1
                                 });
                             }
                         })
                         .catch(function (error) {
-                            console.error("Error al consultar el EAN13 en M3:", error);
-                            // En caso de fallo, dejamos que Sales Hub intente procesar el input original
+                            console.error("Error al consultar el Alias en M3:", error);
+                            // En caso de caída de red o error de API, no bloquea al vendedor
                             resolve({
-                                itemNumber: barcode,
+                                itemNumber: input,
                                 quantity: 1
                             });
                         });
                 } else {
-                    // Si no cumple con el formato EAN13, se procesa de forma nativa sin cambios
+                    // Si no cumple el formato esperado, se envía el input original sin alterar
                     resolve({
-                        itemNumber: barcode,
+                        itemNumber: input,
                         quantity: 1
                     });
                 }
