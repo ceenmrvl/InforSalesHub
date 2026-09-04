@@ -12,7 +12,7 @@ var QuickEntryConversionScript = {
             // Devolvemos el input original para que Sales Hub continúe su flujo nativo
             resolve({
                 itemNumber: input ? input.trim() : "",
-                quantity: 1
+                quantity: 2
             });
             
         });
