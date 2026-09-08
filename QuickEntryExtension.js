@@ -14,13 +14,12 @@ var SHIntegration;
                 this.#executeM3API(url).then(function (response) {
                     console.log("[SalesHub Extension] -> Respuesta del servidor recibida:", response);
                     if (response && response.results && response.results[0] && response.results[0].records) {
-                        // En tu JSON exitoso, records es un objeto directo dentro del primer elemento de results
-                        var record = response.results[0].records;
+                        // Accedemos al primer elemento del arreglo de registros tal como muestra tu consola [{...}]
+                        var record = response.results[0].records[0] || response.results[0].records;
                         console.log("[SalesHub Extension] -> Objeto de registro M3 extraído:", record);
                         if (record && record.ITNO) {
                             var shortItemNumber = record.ITNO.trim();
                             console.log("[SalesHub Extension] -> ¡ÉXITO! Artículo traducido correctamente:", shortItemNumber);
-                            // Devolvemos el artículo corto resolviendo la promesa de forma limpia
                             promise.resolve({
                                 itemNumber: shortItemNumber,
                                 quantity: "1"
