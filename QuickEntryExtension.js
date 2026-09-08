@@ -8,30 +8,28 @@ var SHIntegration;
             const promise = $.Deferred();
             var barcode = productCode ? productCode.trim() : "";
             if (barcode.length > 0 && !isNaN(Number(barcode))) {
-                // Intentamos capturar de la sesión de Sales Hub o Mingle el CONO y DIVI activos
-                // Si no están mapeados en las propiedades globales, el motor asume valores en blanco o nulos
                 var currentCono = window.SalesHub?.UserContext?.Company || "";
                 var currentDivi = window.SalesHub?.UserContext?.Division || "";
-                // Construimos la URL agregando de forma obligatoria los parámetros de control
-                var url = `${this.#getBaseURL()}/m3api-rest/v2/execute/MMS200MI/GetItmByAlias?ALAN=${barcode}&ALTY=EA13`;
+                // Ajuste definitivo: Cambiamos MMS200MI por el programa maestro de alias MMS025MI
+                var url = `${this.#getBaseURL()}/m3api-rest/v2/execute/MMS025MI/GetItmByAlias?ALAN=${barcode}&ALTY=EA13`;
                 if (currentCono)
                     url += `&CONO=${currentCono}`;
                 if (currentDivi)
                     url += `&DIVI=${currentDivi}`;
                 this.#executeM3API(url).then(function (response) {
-                    // Adaptamos la lectura estricta al esquema MIResponse de Infor CloudSuite
+                    // Infor CloudSuite devuelve las respuestas exitosas dentro de results[0].records[0]
                     if (response && response.results && response.results[0] && response.results[0].records) {
                         var records = response.results[0].records;
-                        // En las respuestas de arreglos de registros de M3, el primer elemento contiene los campos del programa
-                        var firstRecord = Array.isArray(records) ? records[0] : records;
-                        if (firstRecord && firstRecord.ITNO) {
+                        var record = Array.isArray(records) ? records[0] : records;
+                        if (record && record.ITNO) {
                             promise.resolve({
-                                itemNumber: firstRecord.ITNO.trim(),
+                                itemNumber: record.ITNO.trim(),
                                 quantity: "1"
                             });
                             return;
                         }
                     }
+                    // Si no encuentra el alias o viene vacío, dejamos pasar el código original
                     promise.resolve({ itemNumber: productCode, quantity: "1" });
                 }, function (error) {
                     console.error("Error al consultar el Alias en M3 mediante pasarela nativa:", error);
