@@ -9,23 +9,26 @@ var SHIntegration;
             var barcode = productCode ? productCode.trim() : "";
             console.log("[SalesHub Extension] -> Entrada detectada. Procesando código:", barcode);
             if (barcode.length > 0 && !isNaN(Number(barcode))) {
+                // Mapeamos los parámetros validados en tu consulta exitosa:
+                // ALWT=2, CONO=300, ALWQ=EA13 y los formatos de limpieza nativos de Infor
                 var url = `${this.#getBaseURL()}/m3api-rest/v2/execute/MMS025MI/GetItem?ALWT=2&POPN=${barcode}&CONO=300&ALWQ=EA13&dateformat=YMD8&excludeempty=false&righttrim=true&format=PRETTY&extendedresult=false`;
                 console.log("[SalesHub Extension] -> Consultando pasarela REST nativa:", url);
                 this.#executeM3API(url).then(function (response) {
                     console.log("[SalesHub Extension] -> Respuesta del servidor recibida:", response);
                     if (response && response.results && response.results[0] && response.results[0].records) {
-                        // Accedemos al primer elemento del arreglo de registros tal como muestra tu consola [{...}]
-                        var record = response.results[0].records[0] || response.results[0].records;
-                        console.log("[SalesHub Extension] -> Objeto de registro M3 extraído:", record);
-                        if (record && record.ITNO) {
-                            var shortItemNumber = record.ITNO.trim();
-                            console.log("[SalesHub Extension] -> ¡ÉXITO! Artículo traducido correctamente:", shortItemNumber);
-                            promise.resolve({
-                                itemNumber: shortItemNumber,
-                                quantity: "1",
-								isConverted: true
-                            });
-                            return;
+                        var records = response.results[0].records;
+                        // Validamos que el arreglo contenga datos y extraemos el primer registro
+                        if (Array.isArray(records) && records.length > 0) {
+                            var record = records[0];
+                            if (record && record.ITNO) {
+                                var shortItemNumber = record.ITNO.trim();
+                                console.log("[SalesHub Extension] -> ¡ÉXITO! Artículo traducido correctamente:", shortItemNumber);
+                                promise.resolve({
+                                    itemNumber: shortItemNumber,
+                                    quantity: "1"
+                                });
+                                return;
+                            }
                         }
                     }
                     console.warn("[SalesHub Extension] -> El alias no devolvió registros válidos. Pasando código original.");
