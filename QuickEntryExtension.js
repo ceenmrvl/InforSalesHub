@@ -12,23 +12,20 @@ var SHIntegration;
                 var url = `${this.#getBaseURL()}/m3api-rest/v2/execute/MMS025MI/GetItem?ALWT=2&POPN=${barcode}&CONO=300&ALWQ=EA13&dateformat=YMD8&excludeempty=false&righttrim=true&format=PRETTY&extendedresult=false`;
                 console.log("[SalesHub Extension] -> Consultando pasarela REST nativa:", url);
                 this.#executeM3API(url).then(function (response) {
-                    if (response && response.results && response.results && response.results.records) {
-                        var records = response.results.records;
-                        if (Array.isArray(records) && records.length > 0) {
-                            var record = records[0]; // Extraemos el primer registro del arreglo de forma explícita
-                            if (record && record.ITNO) {
-                                var shortItemNumber = record.ITNO.trim();
-                                console.log("[SalesHub Extension] -> ¡ÉXITO! Artículo traducido correctamente:", shortItemNumber);
-                                // Forzamos el retorno al formato base inyectando controles de peso fijo
-                                promise.resolve({
-                                    itemNumber: shortItemNumber,
-                                    quantity: "1",
-                                    // Forzamos a Sales Hub a saber que la conversión finalizó 
-                                    // y bloqueamos recalcular cantidades basándose en el código original
-                                    isConverted: true
-                                });
-                                return;
-                            }
+                    console.log("[SalesHub Extension] -> Respuesta del servidor recibida:", response);
+                    if (response && response.results && response.results[0] && response.results[0].records) {
+                        // En tu JSON exitoso, records es un objeto directo dentro del primer elemento de results
+                        var record = response.results[0].records;
+                        console.log("[SalesHub Extension] -> Objeto de registro M3 extraído:", record);
+                        if (record && record.ITNO) {
+                            var shortItemNumber = record.ITNO.trim();
+                            console.log("[SalesHub Extension] -> ¡ÉXITO! Artículo traducido correctamente:", shortItemNumber);
+                            // Devolvemos el artículo corto resolviendo la promesa de forma limpia
+                            promise.resolve({
+                                itemNumber: shortItemNumber,
+                                quantity: "1"
+                            });
+                            return;
                         }
                     }
                     console.warn("[SalesHub Extension] -> El alias no devolvió registros válidos. Pasando código original.");
