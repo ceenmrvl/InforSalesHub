@@ -22,7 +22,8 @@ var SHIntegration;
                             console.log("[SalesHub Extension] -> ¡ÉXITO! Artículo traducido correctamente:", shortItemNumber);
                             promise.resolve({
                                 itemNumber: shortItemNumber,
-                                quantity: "1"
+                                quantity: "1",
+								isConverted: true
                             });
                             return;
                         }
