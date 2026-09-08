@@ -8,14 +8,25 @@ var SHIntegration;
             const promise = $.Deferred();
             var barcode = productCode ? productCode.trim() : "";
             if (barcode.length > 0 && !isNaN(Number(barcode))) {
-                const url = `${this.#getBaseURL()}/m3api-rest/v2/execute/MMS200MI/GetItmByAlias?ALAN=${barcode}&ALTY=EA13`;
-                // Pasamos el control de éxito y de error dentro del mismo .then() para cumplir con PromiseLike
+                // Intentamos capturar de la sesión de Sales Hub o Mingle el CONO y DIVI activos
+                // Si no están mapeados en las propiedades globales, el motor asume valores en blanco o nulos
+                var currentCono = window.SalesHub?.UserContext?.Company || "";
+                var currentDivi = window.SalesHub?.UserContext?.Division || "";
+                // Construimos la URL agregando de forma obligatoria los parámetros de control
+                var url = `${this.#getBaseURL()}/m3api-rest/v2/execute/MMS200MI/GetItmByAlias?ALAN=${barcode}&ALTY=EA13`;
+                if (currentCono)
+                    url += `&CONO=${currentCono}`;
+                if (currentDivi)
+                    url += `&DIVI=${currentDivi}`;
                 this.#executeM3API(url).then(function (response) {
-                    if (response && response.results && response.results[0] && response.results[0].records && response.results[0].records[0]) {
-                        var record = response.results[0].records[0];
-                        if (record && record.ITNO) {
+                    // Adaptamos la lectura estricta al esquema MIResponse de Infor CloudSuite
+                    if (response && response.results && response.results[0] && response.results[0].records) {
+                        var records = response.results[0].records;
+                        // En las respuestas de arreglos de registros de M3, el primer elemento contiene los campos del programa
+                        var firstRecord = Array.isArray(records) ? records[0] : records;
+                        if (firstRecord && firstRecord.ITNO) {
                             promise.resolve({
-                                itemNumber: record.ITNO.trim(),
+                                itemNumber: firstRecord.ITNO.trim(),
                                 quantity: "1"
                             });
                             return;
