@@ -10,17 +10,19 @@ var SHIntegration;
             if (barcode.length > 0 && !isNaN(Number(barcode))) {
                 var currentCono = window.SalesHub?.UserContext?.Company || "";
                 var currentDivi = window.SalesHub?.UserContext?.Division || "";
-                // Ajuste definitivo: Cambiamos MMS200MI por el programa maestro de alias MMS025MI
-                var url = `${this.#getBaseURL()}/m3api-rest/v2/execute/MMS025MI/GetItmByAlias?ALAN=${barcode}&ALTY=EA13`;
+                // Configuración basada exactamente en la documentación de tu API disponible:
+                // Cambiamos a la transacción GetItem y usamos los parámetros ALWT y POPN
+                var url = `${this.#getBaseURL()}/m3api-rest/v2/execute/MMS025MI/GetItem?ALWT=EA13&POPN=${barcode}`;
                 if (currentCono)
                     url += `&CONO=${currentCono}`;
                 if (currentDivi)
                     url += `&DIVI=${currentDivi}`;
                 this.#executeM3API(url).then(function (response) {
-                    // Infor CloudSuite devuelve las respuestas exitosas dentro de results[0].records[0]
-                    if (response && response.results && response.results[0] && response.results[0].records) {
-                        var records = response.results[0].records;
-                        var record = Array.isArray(records) ? records[0] : records;
+                    // El framework REST de Infor CloudSuite entrega el arreglo en response.results.records
+                    if (response && response.results && response.results && response.results.records) {
+                        var records = response.results.records;
+                        var record = Array.isArray(records) ? records : records;
+                        // Si la transacción GetItem devuelve el número de artículo en ITNO, lo resolvemos
                         if (record && record.ITNO) {
                             promise.resolve({
                                 itemNumber: record.ITNO.trim(),
@@ -29,10 +31,10 @@ var SHIntegration;
                             return;
                         }
                     }
-                    // Si no encuentra el alias o viene vacío, dejamos pasar el código original
+                    // Si la API responde pero el registro no tiene ITNO o no existe, dejamos pasar el original
                     promise.resolve({ itemNumber: productCode, quantity: "1" });
                 }, function (error) {
-                    console.error("Error al consultar el Alias en M3 mediante pasarela nativa:", error);
+                    console.error("Error al consultar el Alias en MMS025MI/GetItem:", error);
                     promise.resolve({ itemNumber: productCode, quantity: "1" });
                 });
             }
@@ -41,7 +43,7 @@ var SHIntegration;
             }
             return promise;
         }
-        // --- MÉTODOS NATIVOS DE CONEXIÓN EXTRAÍDOS DE TU EJEMPLO ---
+        // --- MÉTODOS NATIVOS DE CONEXIÓN ---
         #executeM3API(url) {
             if (this.#isCsrfExpired()) {
                 return this.#refreshCsrfToken().then(() => {
@@ -85,6 +87,7 @@ var SHIntegration;
             }
             return Date.now() - Number(entryTime) > this.#csrf_max_age;
         }
+        // En ambientes de prueba locales o Cloud, hereda automáticamente la base de tu URL (/EVHLDK...)
         #getBaseURL() {
             return `${window.location.protocol}//${window.location.host}`;
         }
