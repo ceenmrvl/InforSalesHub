@@ -1,47 +1,47 @@
+/**
+ * Extensión de Entrada Rápida (Quick Entry) para Infor Sales Hub.
+ * Soporta conversión de artículos de peso fijo (MMS025MI) y desglose de peso variable.
+ */
 var SHIntegration;
 (function (SHIntegration) {
     class QuickEntryProductConversion {
+        // Parámetros de control de seguridad CSRF nativos de Infor
         #csrf_key = 'm3api-csrf';
         #csrf_entrytime = 'm3api-csrf-entrytime';
         #csrf_max_age = 59000;
+        /**
+         * Intercepta el código escaneado o digitado para resolver el artículo y su cantidad.
+         */
         convertProduct(productCode) {
             const promise = $.Deferred();
-            // Forzamos a que el código sea tratado siempre como un String limpio
+            // Sanitización del código de barras de entrada
             var barcode = productCode ? String(productCode).trim() : "";
-            console.log("[SalesHub Extension] -> Entrada detectada. Procesando código:", barcode);
             if (barcode.length > 0 && !isNaN(Number(barcode))) {
+                // Obtención de la empresa (CONO) dinámica desde el contexto de la sesión activa
                 var currentCono = window.SalesHub?.UserContext?.Company || "300";
-                // --- CASO 1: CÓDIGO DE PESO VARIABLE (Inicia con 8 y tiene 13 dígitos) ---
-				console.log(`Código: ${barcode} tamaño: ${barcode.length}`);
+                // --- CASO 1: CÓDIGO DE PESO VARIABLE (Prefijo 8 y longitud exacta de EAN13) ---
                 if (barcode.startsWith("8") && barcode.length === 13) {
-                    console.log("[SalesHub Extension] -> [PESO VARIABLE] Detectado prefijo 8.");
-                    // Extraemos los 6 dígitos del artículo directamente (posiciones de la 1 a la 6)
+                    // Desglose directo de la estructura del código de barras
                     var extractedItem = barcode.substring(1, 7);
-                    // Extraemos los 5 dígitos del peso (posiciones de la 7 a la 11) y lo dividimos entre 1000
                     var rawWeight = barcode.substring(7, 12);
                     var calculatedQuantity = (parseFloat(rawWeight) / 1000).toString();
-                    console.log(`[SalesHub Extension] -> [PESO VARIABLE] Éxito inmediato. Artículo: ${extractedItem}, Cantidad: ${calculatedQuantity} KG`);
-                    // Devolvemos el resultado al instante sin tocar la API de Infor
+                    console.log(`[SalesHub QuickEntry] Peso Variable - Artículo: ${extractedItem}, Cantidad: ${calculatedQuantity} KG`);
                     promise.resolve({
                         itemNumber: extractedItem,
                         quantity: calculatedQuantity
                     });
                 }
-                // --- CASO 2: CÓDIGO DE PESO FIJO (Cualquier otro caso, como el prefijo 7) ---
+                // --- CASO 2: CÓDIGO DE PESO FIJO (Prefijo 7 o flujos estándar) ---
                 else {
-                    console.log("[SalesHub Extension] -> [PESO FIJO] Procesando flujo estándar.");
                     var url = `${this.#getBaseURL()}/m3api-rest/v2/execute/MMS025MI/GetItem?ALWT=2&POPN=${barcode}&CONO=${currentCono}&ALWQ=EA13&dateformat=YMD8&excludeempty=false&righttrim=true&format=PRETTY&extendedresult=false`;
-                    console.log("[SalesHub Extension] -> Consultando pasarela REST nativa:", url);
                     this.#executeM3API(url).then(function (response) {
-                        console.log("[SalesHub Extension] -> Respuesta del servidor recibida:", response);
-                        if (response && response.results && response.results[0] && response.results[0].records) {
-                            var records = response.results[0].records;
-                            // Replicamos exactamente la misma validación exacta que te funcionó
+                        if (response && response.results && response.results && response.results.records) {
+                            var records = response.results.records;
                             if (Array.isArray(records) && records.length > 0) {
-                                var record = records[0]; // Forzamos a TypeScript a leer el índice 0 de forma dinámica
+                                var record = records;
                                 if (record && record.ITNO) {
                                     var shortItemNumber = record.ITNO.trim();
-                                    console.log("[SalesHub Extension] -> ¡ÉXITO! Artículo traducido correctamente:", shortItemNumber);
+                                    console.log(`[SalesHub QuickEntry] Peso Fijo - Traducido a: ${shortItemNumber}`);
                                     promise.resolve({
                                         itemNumber: shortItemNumber,
                                         quantity: "1"
@@ -50,10 +50,10 @@ var SHIntegration;
                                 }
                             }
                         }
-                        console.warn("[SalesHub Extension] -> El alias no devolvió registros válidos. Pasando código original.");
+                        // Fallback: Si no hay registro válido en M3, se pasa el código original
                         promise.resolve({ itemNumber: productCode, quantity: "1" });
                     }, function (error) {
-                        console.error("[SalesHub Extension] -> ERROR de comunicación con M3:", error);
+                        console.error("[SalesHub QuickEntry] Error en consulta de peso fijo hacia M3:", error);
                         promise.resolve({ itemNumber: productCode, quantity: "1" });
                     });
                 }
@@ -63,7 +63,7 @@ var SHIntegration;
             }
             return promise;
         }
-        // --- MÉTODOS NATIVOS DE CONEXIÓN ---
+        // --- MÉTODOS NATIVOS DE CONEXIÓN CON GESTIÓN DE TOKENS (REPLICADOS DEL SDK) ---
         #executeM3API(url) {
             if (this.#isCsrfExpired()) {
                 return this.#refreshCsrfToken().then(() => this.#executeHttp(url));
