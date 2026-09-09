@@ -12,6 +12,7 @@ var SHIntegration;
             if (barcode.length > 0 && !isNaN(Number(barcode))) {
                 var currentCono = window.SalesHub?.UserContext?.Company || "300";
                 // --- CASO 1: CÓDIGO DE PESO VARIABLE (Inicia con 8 y tiene 13 dígitos) ---
+				console.log(`Código: ${barcode} tamaño: ${barcode.length}`);
                 if (barcode.startsWith("8") && barcode.length === 13) {
                     console.log("[SalesHub Extension] -> [PESO VARIABLE] Detectado prefijo 8.");
                     // Extraemos los 6 dígitos del artículo directamente (posiciones de la 1 a la 6)
