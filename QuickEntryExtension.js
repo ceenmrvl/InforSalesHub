@@ -6,38 +6,41 @@ var SHIntegration;
         #csrf_max_age = 59000;
         convertProduct(productCode) {
             const promise = $.Deferred();
-            var barcode = productCode ? productCode.trim() : "";
+            // Forzamos a que el código sea tratado siempre como un String limpio
+            var barcode = productCode ? String(productCode).trim() : "";
             console.log("[SalesHub Extension] -> Entrada detectada. Procesando código:", barcode);
             if (barcode.length > 0 && !isNaN(Number(barcode))) {
                 var currentCono = window.SalesHub?.UserContext?.Company || "300";
                 // --- CASO 1: CÓDIGO DE PESO VARIABLE (Inicia con 8 y tiene 13 dígitos) ---
-                if (barcode.indexOf("8") === 0 && barcode.length === 13) {
+                if (barcode.startsWith("8") && barcode.length === 13) {
                     console.log("[SalesHub Extension] -> [PESO VARIABLE] Detectado prefijo 8.");
-                    // Extraemos los 6 dígitos del artículo directamente (desde la posición 1 hasta la 6)
+                    // Extraemos los 6 dígitos del artículo directamente (posiciones de la 1 a la 6)
                     var extractedItem = barcode.substring(1, 7);
-                    // Extraemos los 5 dígitos del peso (desde la posición 7 hasta la 11) y lo convertimos a decimal (KG)
+                    // Extraemos los 5 dígitos del peso (posiciones de la 7 a la 11) y lo dividimos entre 1000
                     var rawWeight = barcode.substring(7, 12);
                     var calculatedQuantity = (parseFloat(rawWeight) / 1000).toString();
                     console.log(`[SalesHub Extension] -> [PESO VARIABLE] Éxito inmediato. Artículo: ${extractedItem}, Cantidad: ${calculatedQuantity} KG`);
-                    // Devolvemos el resultado directamente sin consultar la API
+                    // Devolvemos el resultado al instante sin tocar la API de Infor
                     promise.resolve({
                         itemNumber: extractedItem,
                         quantity: calculatedQuantity
                     });
                 }
-                // --- CASO 2: CÓDIGO DE PESO FIJO (Inicia con 7 u otros flujos estándar) ---
+                // --- CASO 2: CÓDIGO DE PESO FIJO (Cualquier otro caso, como el prefijo 7) ---
                 else {
                     console.log("[SalesHub Extension] -> [PESO FIJO] Procesando flujo estándar.");
                     var url = `${this.#getBaseURL()}/m3api-rest/v2/execute/MMS025MI/GetItem?ALWT=2&POPN=${barcode}&CONO=${currentCono}&ALWQ=EA13&dateformat=YMD8&excludeempty=false&righttrim=true&format=PRETTY&extendedresult=false`;
+                    console.log("[SalesHub Extension] -> Consultando pasarela REST nativa:", url);
                     this.#executeM3API(url).then(function (response) {
-                        if (response && response.results && response.results && response.results.records) {
-                            var records = response.results.records;
+                        console.log("[SalesHub Extension] -> Respuesta del servidor recibida:", response);
+                        if (response && response.results && response.results[0] && response.results[0].records) {
+                            var records = response.results[0].records;
+                            // Replicamos exactamente la misma validación exacta que te funcionó
                             if (Array.isArray(records) && records.length > 0) {
-                                // Solución técnica: Declaramos explícitamente como 'any' para evitar la queja de TypeScript
-                                var record = records;
+                                var record = records[0]; // Forzamos a TypeScript a leer el índice 0 de forma dinámica
                                 if (record && record.ITNO) {
                                     var shortItemNumber = record.ITNO.trim();
-                                    console.log("[SalesHub Extension] -> [PESO FIJO] ¡ÉXITO! Artículo traducido:", shortItemNumber);
+                                    console.log("[SalesHub Extension] -> ¡ÉXITO! Artículo traducido correctamente:", shortItemNumber);
                                     promise.resolve({
                                         itemNumber: shortItemNumber,
                                         quantity: "1"
@@ -46,9 +49,10 @@ var SHIntegration;
                                 }
                             }
                         }
+                        console.warn("[SalesHub Extension] -> El alias no devolvió registros válidos. Pasando código original.");
                         promise.resolve({ itemNumber: productCode, quantity: "1" });
                     }, function (error) {
-                        console.error("[SalesHub Extension] -> ERROR en consulta de peso fijo:", error);
+                        console.error("[SalesHub Extension] -> ERROR de comunicación con M3:", error);
                         promise.resolve({ itemNumber: productCode, quantity: "1" });
                     });
                 }
